@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { CONTENT } from '../src/game/content';
 import { give } from '../src/game/magic';
-import { advanceQuest, chooseVivec, damageDagothUr, strikeHeart } from '../src/game/quests';
+import { advanceQuest, branchClosed, chooseVivec, damageDagothUr, strikeHeart } from '../src/game/quests';
 import { cureAttempt, createNewGame } from '../src/game/state';
 import type { GameState } from '../src/game/types';
+import { crowdSpots, doorSpots, spawnsAt } from '../src/game/world';
 
 const quests = CONTENT.quests;
 
@@ -261,5 +262,60 @@ describe('main quest preconditions', () => {
     state.flags.heartSevered = true;
     state.flags.heartSundered = true;
     expect(advanceQuest(state, quests, 'mq_heart').ok).toBe(true);
+  });
+
+  it('the Heart, Falura, and Vivec are in the world before their objective flags', () => {
+    const state = fresh();
+    done(state, 'mq_citadels');
+    const heart = spawnsAt(state, quests, 'heart_chamber').map((s) => s.npc ?? s.item);
+    expect(heart).toContain('heart_of_lorkhan');
+    expect(heart).toContain('dagoth_ur');
+    expect(state.flags.heartSevered).toBeFalsy();
+
+    done(state, 'mq_path');
+    const aruhn = spawnsAt(state, quests, 'tel_aruhn').map((s) => s.npc ?? s.item);
+    expect(aruhn).toContain('falura_llervu');
+    expect(aruhn).toContain('ceremonial_robe');
+
+    for (const id of [
+      'mq_hortator_hlaalu',
+      'mq_hortator_redoran',
+      'mq_hortator_telvanni',
+      'mq_nerevarine_urshilaku',
+      'mq_nerevarine_ahemmusa',
+      'mq_nerevarine_zainab',
+      'mq_nerevarine_erabenimsun',
+    ]) done(state, id);
+    const palace = spawnsAt(state, quests, 'vivec_palace').map((s) => s.npc ?? s.item);
+    expect(palace).toContain('vivec');
+
+    done(state, 'mq_sul_matuul');
+    const camp = spawnsAt(state, quests, 'urshilaku_camp').map((s) => s.npc);
+    expect(camp).toContain('nibani_maesa');
+    expect(camp).toContain('sul_matuul');
+  });
+
+  it('accepting Vivec closes the Yagrum branch', () => {
+    const state = fresh();
+    const yagrum = quests.find((q) => q.id === 'mq_yagrum')!;
+    expect(branchClosed(state, yagrum.stages[0]?.complete)).toBe(false);
+    state.flags.vivec_plan = true;
+    expect(branchClosed(state, yagrum.stages[0]?.complete)).toBe(true);
+  });
+
+  it('a crowded canton still has a separate road for every walk link', () => {
+    const spots = doorSpots(30);
+    expect(spots).toHaveLength(30);
+    const crowd = crowdSpots(90);
+    expect(crowd).toHaveLength(90);
+    for (const s of crowd) expect(Math.hypot(s.x, s.z - 1.2)).toBeLessThan(6.2);
+    expect(spots[0]!.z).toBeLessThan(-8);
+    expect(Math.abs(spots[0]!.x)).toBeLessThan(0.02);
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const d = Math.hypot(spots[i]!.x - spots[j]!.x, spots[i]!.z - spots[j]!.z);
+        expect(d).toBeGreaterThan(2.4);
+      }
+    }
   });
 });

@@ -1,6 +1,7 @@
 import {
   AmbientLight,
   BoxGeometry,
+  CanvasTexture,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -22,13 +23,13 @@ import { REGION_TINT } from '../game/content/locations';
 import { admire, bribe, intimidate, levelUp, moveSpeed, taunt, useSkill } from '../game/formulas';
 import { actionFromGamepadButton, actionFromKey, TOUCH_ACTIONS } from '../game/input-map';
 import { castSpell, drinkPotion, enchantItem, give, hasQty, makeSpell, mixPotion, useEnchantment } from '../game/magic';
-import { advanceQuest, chooseVivec, conditionMet, currentJournal, equipItem, isWraithguardEquipped, noteTalk, questRecord, strikeHeart } from '../game/quests';
+import { advanceQuest, branchClosed, chooseVivec, conditionMet, currentJournal, equipItem, isWraithguardEquipped, noteTalk, questRecord, strikeHeart } from '../game/quests';
 import { readLocalSave, writeLocalSave } from '../game/save';
 import { createNewGame, playerDefense, resolveStrike, rest, talkTo } from '../game/state';
 import { canFight, canTravel, travelTo } from '../game/travel';
 import type { CharacterChoices, GameAction, GameState, QuestDef, Specialty } from '../game/types';
 import { ATTRIBUTES } from '../game/types';
-import { ambientThreats, spawnsAt, type Ambient, type SpawnView } from '../game/world';
+import { ambientThreats, crowdSpots, doorSpots, spawnsAt, type Ambient, type SpawnView } from '../game/world';
 import { AshAudio } from './audio';
 import { clampPitch, moveVectorFromCamera } from './frame';
 
@@ -47,6 +48,7 @@ interface Actor {
   mesh: Group;
   spawn?: SpawnView;
   item?: string;
+  swing: number;
 }
 
 const wish = new Vector3();
@@ -551,21 +553,25 @@ export class Canticle {
         actor.z = actor.homeZ + (lz / ld) * actor.leash;
       }
       actor.mesh.position.set(actor.x, 0, actor.z);
-      if (d < 1.7 && state.released && Math.random() < dt * 0.8) {
-        const def = playerDefense(state, CONTENT.items);
-        const raw = 6 + Math.floor(Math.random() * 6);
-        const dmg = Math.max(1, raw - Math.floor(def / 6));
-        state.health = Math.max(0, state.health - dmg);
-        this.toast(`-${dmg}`, true);
-        this.audio.hit();
-        if (state.health <= 0) {
-          state.health = state.healthMax;
-          state.location = 'seyda_neen';
-          state.px = 0;
-          state.pz = 4;
-          this.toast('The ancestors drag you back to Seyda Neen.', false);
-          this.enterLocation(true);
-          return;
+      if (d < 1.7 && state.released) {
+        actor.swing -= dt;
+        if (actor.swing <= 0) {
+          actor.swing = 1.25;
+          const def = playerDefense(state, CONTENT.items);
+          const raw = 6 + Math.floor(Math.random() * 6);
+          const dmg = Math.max(1, raw - Math.floor(def / 6));
+          state.health = Math.max(0, state.health - dmg);
+          this.toast(`-${dmg}`, true);
+          this.audio.hit();
+          if (state.health <= 0) {
+            state.health = state.healthMax;
+            state.location = 'seyda_neen';
+            state.px = 0;
+            state.pz = 4;
+            this.toast('The ancestors drag you back to Seyda Neen.', false);
+            this.enterLocation(true);
+            return;
+          }
         }
       }
     }
@@ -575,9 +581,9 @@ export class Canticle {
       this.camera.position.addScaledVector(back, -3.4);
       this.camera.position.y += 1.1;
     }
-    const edge = 18;
+    const edge = 28;
     const gate = this.actors.find(
-      (a) => a.kind === 'exit' && Math.hypot(a.x - state.px, a.z - state.pz) < 1.35,
+      (a) => a.kind === 'exit' && Math.hypot(a.x - state.px, a.z - state.pz) < 1.1,
     );
     if (gate && performance.now() > this.gateAt) {
       this.gateAt = performance.now() + 700;
@@ -690,31 +696,47 @@ export class Canticle {
       });
     }
     const spawns = spawnsAt(state, CONTENT.quests, state.location);
-    let i = 0;
-    for (const sp of spawns) {
-      const x = (i - (spawns.length - 1) / 2) * 1.6;
-      const z = 1.6;
-      i++;
-      this.placeFigure(sp, x, z);
-    }
+    const crowd = crowdSpots(spawns.length);
+    spawns.forEach((sp, i) => {
+      const spot = crowd[i] ?? { x: 0, z: 1.2 };
+      this.placeFigure(sp, spot.x, spot.z);
+    });
     for (const amb of ambientThreats(state.location, loc?.kind ?? 'town')) this.placeAmbient(amb);
-    const walks = (loc?.walk ?? []).slice(0, 4);
-    const spots = [
-      { x: 0, z: -5.2 },
-      { x: -11, z: 1 },
-      { x: 11, z: 1 },
-      { x: 0, z: 11 },
-    ];
+    const walks = loc?.walk ?? [];
+    const spots = doorSpots(walks.length);
     walks.forEach((id, idx) => {
-      const gate = new Mesh(new BoxGeometry(2.4, 3.2, 0.35), new MeshStandardMaterial({ color: 0xd7c07a }));
-      const spot = spots[idx] ?? spots[0]!;
+      const spot = spots[idx];
+      if (!spot) return;
       const x = spot.x;
       const z = spot.z;
-      gate.position.set(x, 1.5, z);
+      const gate = new Mesh(new BoxGeometry(1.6, 2.8, 0.35), new MeshStandardMaterial({ color: 0xd7c07a }));
+      gate.position.set(x, 1.4, z);
+      gate.rotation.y = Math.atan2(x, z);
       this.world.add(gate);
+      const name = CONTENT.locations.get(id)?.name ?? id;
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#24180f';
+        ctx.fillRect(0, 0, 256, 64);
+        ctx.fillStyle = '#f3e6c8';
+        ctx.font = '22px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name.slice(0, 22), 128, 32);
+        const plate = new Mesh(
+          new PlaneGeometry(2.1, 0.52),
+          new MeshStandardMaterial({ map: new CanvasTexture(canvas), roughness: 1 }),
+        );
+        plate.position.set(x, 3.05, z);
+        plate.rotation.y = Math.atan2(x, z);
+        this.world.add(plate);
+      }
       this.addActor({
         id: `exit:${id}`,
-        name: CONTENT.locations.get(id)?.name ?? id,
+        name,
         x,
         z,
         homeX: x,
@@ -766,6 +788,8 @@ export class Canticle {
     const g = this.figure(color, !!sp.hostile);
     g.position.set(x, 0, z);
     this.world.add(g);
+    const remembered = sp.npc ? this.state?.actors[sp.npc] : undefined;
+    const hp = remembered === undefined ? sp.hp : remembered;
     this.addActor({
       id: sp.npc ?? sp.name,
       name: sp.name,
@@ -774,9 +798,9 @@ export class Canticle {
       homeX: x,
       homeZ: z,
       leash: sp.leash ?? 12,
-      hp: sp.hp,
+      hp,
       max: sp.hp,
-      hostile: !!sp.hostile,
+      hostile: !!sp.hostile && hp > 0,
       kind: sp.kind,
       spawn: sp,
       mesh: g,
@@ -813,15 +837,16 @@ export class Canticle {
     return g;
   }
 
-  private addActor(actor: Actor): void {
-    this.actors.push(actor);
+  private addActor(actor: Omit<Actor, 'swing'>): void {
+    this.actors.push({ ...actor, swing: 1.1 });
   }
 
-  private nearest(max = 2.8): Actor | null {
+  private nearest(max = 2.8, pred?: (a: Actor) => boolean): Actor | null {
     const state = this.state!;
     let best: Actor | null = null;
     let bestD = max;
     for (const a of this.actors) {
+      if (pred && !pred(a)) continue;
       const d = Math.hypot(a.x - state.px, a.z - state.pz);
       if (d < bestD) {
         bestD = d;
@@ -862,7 +887,7 @@ export class Canticle {
 
   private interact(): void {
     const state = this.state!;
-    const near = this.nearest(3);
+    const near = this.nearest(3.6, (a) => !a.hostile) ?? this.nearest(3.6);
     if (!near) {
       this.toast('Nothing here.', false);
       return;
@@ -1363,6 +1388,10 @@ export class Canticle {
     if (this.mode === 'ending') return;
     this.mode = 'ending';
     const state = this.state!;
+    this.ui.querySelector('#hud')?.remove();
+    this.ui.querySelector('#float')?.remove();
+    this.ui.querySelector('#dialogue')?.remove();
+    this.ui.querySelector('.panel')?.remove();
     const screen = document.createElement('div');
     screen.className = 'screen';
     screen.innerHTML = `
@@ -1398,10 +1427,16 @@ export class Canticle {
     set('.ft > span', state.fatigue, state.fatigueMax);
     const line = hud.querySelector('.questline') as HTMLElement;
     const active = CONTENT.quests.find((q) => state.quests[q.id] && !state.quests[q.id]!.complete);
+    const upcoming =
+      !active && state.released
+        ? CONTENT.quests.find(
+            (q) => q.category === 'main' && !state.quests[q.id]?.complete && !branchClosed(state, q.stages[0]?.complete),
+          )
+        : undefined;
     const text = active
       ? currentJournal(state, active) ?? active.summary
-      : state.released
-        ? 'Carry the package to Caius Cosades. He keeps a house in Balmora.'
+      : upcoming
+        ? (upcoming.stages[0]?.journal ?? upcoming.summary)
         : state.quests.mq_awakening?.complete
           ? 'The gold door ahead leads up to the Seyda Neen dock.'
           : 'The ship rocks. Seyda Neen is outside.';
@@ -1414,7 +1449,31 @@ export class Canticle {
     hudEl.dataset.yaw = state.yaw.toFixed(2);
     hudEl.dataset.keys = [...this.keys].join(',');
     const compass = hud.querySelector('.compass') as HTMLElement;
-    if (state.guidance && active) {
+    let near: Actor | null = null;
+    let nearD = 3.6;
+    let foes = 0;
+    let threat = 0;
+    for (const actor of this.actors) {
+      if (actor.hostile && actor.hp > 0) {
+        foes += 1;
+        if (actor.kind !== 'racer' && Math.hypot(actor.x - state.px, actor.z - state.pz) < 10) threat += 1;
+      }
+      if (actor.hostile) continue;
+      const d = Math.hypot(actor.x - state.px, actor.z - state.pz);
+      if (d < nearD) {
+        nearD = d;
+        near = actor;
+      }
+    }
+    hudEl.dataset.near = near?.name ?? '';
+    hudEl.dataset.nearid = near?.id ?? '';
+    hudEl.dataset.foes = String(foes);
+    hudEl.dataset.threat = String(threat);
+    hudEl.dataset.hp = String(Math.round(state.health));
+    hudEl.dataset.hpmax = String(state.healthMax);
+    hudEl.dataset.gold = String(state.gold);
+    if (near) compass.textContent = near.kind === 'exit' ? `Path: ${near.name}` : near.name;
+    else if (state.guidance && active) {
       const target = active.sites.find((s) => s.id !== state.location)?.id ?? active.location;
       const there = CONTENT.locations.get(target);
       compass.textContent = there && there.id !== state.location ? `Toward ${there.name}` : '';

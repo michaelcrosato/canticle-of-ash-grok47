@@ -14,15 +14,54 @@ export interface SpawnView {
 }
 
 function isGate(cond: Cond): boolean {
+  // Objective flags (Heart severed, Falura agreed, Vivec's answer) are resolved
+  // where the actors stand. They must not hide those actors.
   return (
     cond.op === 'quest' ||
     cond.op === 'faction' ||
-    cond.op === 'flag' ||
     cond.op === 'notFlag' ||
     cond.op === 'vampire' ||
     cond.op === 'disease' ||
     cond.op === 'released'
   );
+}
+
+/** People and relics stand in a tight spiral inside the plaza, clear of the road ring. */
+export function crowdSpots(count: number): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  if (count <= 0) return out;
+  const gap = count > 50 ? 0.78 : 1;
+  let i = 0;
+  let ring = 0;
+  while (i < count) {
+    if (ring === 0) {
+      out.push({ x: 0, z: 1.2 });
+      i++;
+      ring++;
+      continue;
+    }
+    const radius = ring * gap;
+    const seats = Math.max(6, Math.floor((2 * Math.PI * radius) / gap));
+    for (let s = 0; s < seats && i < count; s++) {
+      const a = (s / seats) * Math.PI * 2;
+      out.push({ x: Math.sin(a) * radius, z: 1.2 + Math.cos(a) * radius * 0.72 });
+      i++;
+    }
+    ring++;
+  }
+  return out;
+}
+
+/** Roads around a cell. Index 0 is straight ahead (−Z). Gates stay farther apart than a step. */
+export function doorSpots(count: number): { x: number; z: number }[] {
+  if (count <= 0) return [];
+  const radius = Math.max(8.5, (count * 3.15) / (2 * Math.PI));
+  const out: { x: number; z: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    out.push({ x: Math.sin(angle) * radius, z: -Math.cos(angle) * radius });
+  }
+  return out;
 }
 
 function gatesOpen(state: GameState, cond: Cond): boolean {
@@ -38,10 +77,12 @@ export function spawnsAt(state: GameState, quests: QuestDef[], location: string)
   for (const quest of quests) {
     const rec = state.quests[quest.id];
     if (rec?.complete) {
-      const giver = quest.spawns.find((s) => s.npc === quest.giver && s.location === location);
-      if (giver && !seen.has(giver.npc!)) {
-        seen.add(giver.npc!);
-        out.push({ ...giver, hp: giver.hp ?? 30, kind: 'npc' });
+      // People stay where they live. Quest items and corpses do not return.
+      for (const spawn of quest.spawns) {
+        if (spawn.location !== location || spawn.hostile || spawn.item || !spawn.npc) continue;
+        if (seen.has(spawn.npc) || state.dead[spawn.npc]) continue;
+        seen.add(spawn.npc);
+        out.push({ ...spawn, hp: spawn.hp ?? 30, kind: 'npc' });
       }
       continue;
     }

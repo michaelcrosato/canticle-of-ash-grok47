@@ -129,6 +129,15 @@ export function applyReward(state: GameState, reward: Reward | undefined): void 
   if (reward.journal) state.flags[`journal:${reward.journal}`] = true;
 }
 
+/** A branch that required a flag to stay unset, after that flag is set. */
+export function branchClosed(state: GameState, cond: Cond | undefined): boolean {
+  if (!cond) return false;
+  if (cond.op === 'notFlag') return !!state.flags[cond.id];
+  if (cond.op === 'all') return cond.of.some((c) => branchClosed(state, c));
+  if (cond.op === 'any') return cond.of.every((c) => branchClosed(state, c));
+  return false;
+}
+
 export function questRecord(state: GameState, id: string): { stage: number; complete: boolean } {
   return state.quests[id] ?? { stage: 0, complete: false };
 }

@@ -77,6 +77,10 @@ declare module 'three' {
   export class MeshStandardMaterial {
     constructor(params?: object);
   }
+  export class CanvasTexture {
+    needsUpdate: boolean;
+    constructor(image?: HTMLCanvasElement);
+  }
   export class HemisphereLight {
     constructor(sky?: number, ground?: number, intensity?: number);
   }
