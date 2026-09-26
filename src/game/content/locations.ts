@@ -16,7 +16,7 @@ interface Hub {
 const H: Hub[] = [
   { id: 'prison_ship', name: 'Imperial Prison Ship', region: 'bitter_coast', kind: 'ship', x: 150, y: 900, walk: ['seyda_neen'] },
   { id: 'census_office', name: 'Census and Excise', region: 'bitter_coast', kind: 'interior', x: 142, y: 868, walk: ['seyda_neen'] },
-  { id: 'seyda_neen', name: 'Seyda Neen', region: 'bitter_coast', kind: 'town', x: 140, y: 860, walk: ['prison_ship', 'census_office', 'hla_oad', 'pelagiad'], silt: ['balmora', 'vivec', 'suran', 'gnisis'], boat: ['hla_oad', 'ebonheart', 'vivec'] },
+  { id: 'seyda_neen', name: 'Seyda Neen', region: 'bitter_coast', kind: 'town', x: 140, y: 860, walk: ['census_office', 'prison_ship', 'hla_oad', 'pelagiad'], silt: ['balmora', 'vivec', 'suran', 'gnisis'], boat: ['hla_oad', 'ebonheart', 'vivec'] },
   { id: 'hla_oad', name: 'Hla Oad', region: 'bitter_coast', kind: 'town', x: 70, y: 790, walk: ['seyda_neen', 'gnaar_mok'], boat: ['seyda_neen', 'gnaar_mok'] },
   { id: 'gnaar_mok', name: 'Gnaar Mok', region: 'bitter_coast', kind: 'town', x: 60, y: 680, walk: ['hla_oad'], boat: ['hla_oad', 'khuul'] },
   { id: 'pelagiad', name: 'Pelagiad', region: 'ascadian', kind: 'town', x: 210, y: 740, walk: ['seyda_neen', 'balmora', 'moonmoth_fort'] },

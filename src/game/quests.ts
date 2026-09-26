@@ -145,6 +145,9 @@ export function advanceQuest(state: GameState, quests: QuestDef[], questId: stri
   applyReward(state, stage.reward);
   const next = { stage: rec.stage + 1, complete: rec.stage + 1 >= quest.stages.length };
   state.quests[questId] = next;
+  if (next.complete && questId === 'mq_release') {
+    state.quests.mq_caius = { stage: 0, complete: false };
+  }
   return { ok: true, reason: 'advanced', journal: stage.journal };
 }
 

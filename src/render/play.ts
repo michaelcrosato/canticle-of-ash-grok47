@@ -69,6 +69,7 @@ export class Canticle {
   private padPrev: boolean[] = [];
   private ui: HTMLElement;
   private floatTimer = 0;
+  private gateAt = 0;
   private last = performance.now();
   private mode: 'title' | 'create' | 'play' | 'ending' = 'title';
   private choices: CharacterChoices = { name: 'Outlander', race: 'darkelf', birthsign: 'steed', classId: 'pilgrim' };
@@ -100,14 +101,32 @@ export class Canticle {
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
-    this.renderer.domElement.addEventListener('click', () => {
+    let dragId: number | null = null;
+    let dragX = 0;
+    let dragY = 0;
+    this.renderer.domElement.tabIndex = 0;
+    this.renderer.domElement.addEventListener('pointerdown', (e) => {
       this.audio.ensure();
-      if (this.mode === 'play' && window.innerWidth >= 900) this.renderer.domElement.requestPointerLock?.();
+      if (this.mode !== 'play') return;
+      dragId = e.pointerId;
+      dragX = e.clientX;
+      dragY = e.clientY;
+      this.renderer.domElement.setPointerCapture(e.pointerId);
+    });
+    this.renderer.domElement.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== dragId || !this.state || this.mode !== 'play') return;
+      this.state.yaw -= (e.clientX - dragX) * 0.005;
+      this.state.pitch = clampPitch(this.state.pitch - (e.clientY - dragY) * 0.004);
+      dragX = e.clientX;
+      dragY = e.clientY;
+    });
+    this.renderer.domElement.addEventListener('pointerup', () => {
+      dragId = null;
     });
     window.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== this.renderer.domElement) return;
-      this.state && (this.state.yaw -= e.movementX * 0.0022);
-      if (this.state) this.state.pitch = clampPitch(this.state.pitch - e.movementY * 0.002);
+      if (document.pointerLockElement !== this.renderer.domElement || !this.state) return;
+      this.state.yaw -= e.movementX * 0.0022;
+      this.state.pitch = clampPitch(this.state.pitch - e.movementY * 0.002);
     });
     this.buildTitleVista();
     this.showTitle();
@@ -118,7 +137,11 @@ export class Canticle {
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
       this.pollPad(dt);
-      if (this.mode === 'play' && this.state) this.simulate(dt);
+      try {
+        if (this.mode === 'play' && this.state) this.simulate(dt);
+      } catch (err) {
+        console.error(err);
+      }
       this.renderer.render(this.scene, this.camera);
       this.raf = requestAnimationFrame(loop);
     };
@@ -553,6 +576,21 @@ export class Canticle {
       this.camera.position.y += 1.1;
     }
     const edge = 18;
+    const gate = this.actors.find(
+      (a) => a.kind === 'exit' && Math.hypot(a.x - state.px, a.z - state.pz) < 1.35,
+    );
+    if (gate && performance.now() > this.gateAt) {
+      this.gateAt = performance.now() + 700;
+      const dest = gate.id.slice(5);
+      const allowed = state.released || ['seyda_neen', 'census_office', 'prison_ship'].includes(dest);
+      if (allowed) {
+        const res = travelTo(state, CONTENT.locations, dest, 'walk');
+        if (res.ok) {
+          this.enterLocation(true);
+          return;
+        }
+      }
+    }
     if (Math.abs(state.px) > edge || Math.abs(state.pz) > edge) {
       const loc = CONTENT.locations.get(state.location);
       const exits = loc?.walk ?? [];
@@ -655,16 +693,23 @@ export class Canticle {
     let i = 0;
     for (const sp of spawns) {
       const x = (i - (spawns.length - 1) / 2) * 1.6;
-      const z = 0.4;
+      const z = 1.6;
       i++;
       this.placeFigure(sp, x, z);
     }
     for (const amb of ambientThreats(state.location, loc?.kind ?? 'town')) this.placeAmbient(amb);
     const walks = (loc?.walk ?? []).slice(0, 4);
+    const spots = [
+      { x: 0, z: -5.2 },
+      { x: -11, z: 1 },
+      { x: 11, z: 1 },
+      { x: 0, z: 11 },
+    ];
     walks.forEach((id, idx) => {
-      const gate = new Mesh(new BoxGeometry(2.2, 3, 0.4), new MeshStandardMaterial({ color: 0xd7c07a }));
-      const x = walks.length === 1 ? 0 : idx === 0 ? -12 : idx === 1 ? 12 : 0;
-      const z = walks.length === 1 ? -6 : idx < 2 ? 2 : idx === 2 ? -14 : 10;
+      const gate = new Mesh(new BoxGeometry(2.4, 3.2, 0.35), new MeshStandardMaterial({ color: 0xd7c07a }));
+      const spot = spots[idx] ?? spots[0]!;
+      const x = spot.x;
+      const z = spot.z;
       gate.position.set(x, 1.5, z);
       this.world.add(gate);
       this.addActor({
@@ -770,9 +815,6 @@ export class Canticle {
 
   private addActor(actor: Actor): void {
     this.actors.push(actor);
-    if (actor.kind !== 'item' && actor.kind !== 'exit' && actor.kind !== 'service' && actor.kind !== 'racer') {
-      this.blocks.push({ minX: actor.x - 0.3, maxX: actor.x + 0.3, minZ: actor.z - 0.3, maxZ: actor.z + 0.3 });
-    }
   }
 
   private nearest(max = 2.8): Actor | null {
@@ -1356,9 +1398,21 @@ export class Canticle {
     set('.ft > span', state.fatigue, state.fatigueMax);
     const line = hud.querySelector('.questline') as HTMLElement;
     const active = CONTENT.quests.find((q) => state.quests[q.id] && !state.quests[q.id]!.complete);
-    const text = active ? currentJournal(state, active) ?? active.summary : 'The ship rocks. Seyda Neen is outside.';
+    const text = active
+      ? currentJournal(state, active) ?? active.summary
+      : state.released
+        ? 'Carry the package to Caius Cosades. He keeps a house in Balmora.'
+        : state.quests.mq_awakening?.complete
+          ? 'The gold door ahead leads up to the Seyda Neen dock.'
+          : 'The ship rocks. Seyda Neen is outside.';
     const loc = CONTENT.locations.get(state.location);
     line.textContent = `${loc?.name ?? ''} — ${text}`;
+    const hudEl = hud as HTMLElement;
+    hudEl.dataset.x = state.px.toFixed(2);
+    hudEl.dataset.z = state.pz.toFixed(2);
+    hudEl.dataset.loc = state.location;
+    hudEl.dataset.yaw = state.yaw.toFixed(2);
+    hudEl.dataset.keys = [...this.keys].join(',');
     const compass = hud.querySelector('.compass') as HTMLElement;
     if (state.guidance && active) {
       const target = active.sites.find((s) => s.id !== state.location)?.id ?? active.location;

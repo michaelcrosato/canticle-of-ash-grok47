@@ -30,6 +30,7 @@ describe('main quest preconditions', () => {
     expect(advanceQuest(state, quests, 'mq_release').ok).toBe(true);
     expect(state.released).toBe(true);
     expect(state.inventory.some((i) => i.id === 'package_for_caius')).toBe(true);
+    expect(state.quests.mq_caius).toEqual({ stage: 0, complete: false });
 
     expect(advanceQuest(state, quests, 'mq_caius').ok).toBe(false);
     state.location = 'balmora';
