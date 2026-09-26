@@ -1,0 +1,147 @@
+:root {
+  color-scheme: dark;
+  --ink: #f4ead8;
+  --dim: #cbbfa6;
+  --bg: #140e0c;
+  --panel: rgba(18, 12, 10, 0.88);
+  --line: #a68455;
+  --blood: #8c2f24;
+  --good: #d7c07a;
+  font-family: "Palatino Linotype", Palatino, Georgia, serif;
+}
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; }
+#app { position: fixed; inset: 0; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#ui { position: absolute; inset: 0; pointer-events: none; }
+#ui button, #ui input, #ui select, #ui label { pointer-events: auto; font: inherit; color: inherit; }
+button {
+  background: #2a1c16;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 0.7rem 0.9rem;
+  border-radius: 4px;
+  min-height: 44px;
+}
+button.primary { background: #6a3a22; }
+button:active { filter: brightness(1.2); }
+.screen {
+  pointer-events: auto;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(10, 6, 5, 0.78), rgba(10, 6, 5, 0.15) 45%, rgba(10, 6, 5, 0.25));
+}
+.screen h1 {
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: clamp(1.8rem, 7vw, 3.4rem);
+  margin: 0 0 0.2rem;
+  text-shadow: 0 2px 16px #000;
+}
+.sub { letter-spacing: 0.22em; text-transform: uppercase; color: var(--good); font-size: 0.78rem; }
+.credit { opacity: 0.8; font-size: 0.85rem; margin-top: 0.4rem; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+.panel {
+  pointer-events: auto;
+  position: absolute;
+  inset: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  overflow: auto;
+  padding: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+.panel h2 { margin: 0 0 8px; font-weight: 500; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.card { border: 1px solid #5c4632; padding: 8px; background: #1c1410; text-align: left; width: 100%; }
+.card.on { border-color: var(--good); }
+.card small { display: block; color: var(--dim); }
+#hud {
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  padding: max(8px, env(safe-area-inset-top)) 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-shadow: 0 1px 2px #000;
+}
+.bars { display: flex; gap: 6px; }
+.bar { flex: 1; height: 10px; background: #0008; border: 1px solid #000; }
+.bar > span { display: block; height: 100%; }
+.hp > span { background: #8c2f24; }
+.mp > span { background: #3a6ea5; }
+.ft > span { background: #c4a15a; }
+.questline { font-size: 0.92rem; max-width: 46rem; }
+.float {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+  text-shadow: 0 2px 8px #000;
+}
+.float.miss { color: #d9d3c7; }
+.float.hit { color: #ffb089; }
+#touch {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+.stick, .look {
+  pointer-events: auto;
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: 42vw;
+  height: 42vw;
+  max-width: 180px;
+  max-height: 180px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 186, 140, 0.35);
+  background: rgba(0, 0, 0, 0.2);
+}
+.stick { left: 12px; }
+.look { right: 12px; }
+.knob {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: rgba(214, 186, 140, 0.45);
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+}
+.tbuttons {
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  bottom: calc(42vw + 28px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(46vw, 220px);
+  justify-content: flex-end;
+}
+.tbuttons button { pointer-events: auto; min-width: 64px; padding: 0.45rem 0.4rem; }
+#dialogue {
+  pointer-events: auto;
+  position: absolute;
+  left: 8px; right: 8px;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 12px;
+  max-height: 48vh;
+  overflow: auto;
+}
+#dialogue p { margin: 0 0 8px; }
+.hidden { display: none !important; }
+label.opt { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: 8px 0; }
+@media (min-width: 900px) {
+  #touch { display: none; }
+  .screen { justify-content: center; }
+}
