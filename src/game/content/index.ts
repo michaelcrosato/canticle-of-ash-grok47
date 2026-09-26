@@ -5,12 +5,13 @@ import { ITEMS, SPELLS, spellMap } from './items';
 import { attachSite, baseLocations } from './locations';
 import { mainQuests } from './mainquests';
 import { COMPACT_QUESTS } from './rows';
+import { SIDE_BATCH } from './side-batch';
 
 const FACTIONS = ['hlaalu', 'redoran', 'telvanni', 'fighters', 'mages', 'thieves', 'cult', 'legion', 'temple', 'morag', 'daedric', 'vampire'];
 
 const expanded = COMPACT_QUESTS.map(expandQuest);
 for (const f of FACTIONS) assignRanks(expanded, f);
-const quests: QuestDef[] = [...mainQuests(), ...expanded];
+const quests: QuestDef[] = [...mainQuests(), ...expanded, ...SIDE_BATCH];
 
 const locationList: LocationDef[] = baseLocations();
 const known = new Set(locationList.map((l) => l.id));

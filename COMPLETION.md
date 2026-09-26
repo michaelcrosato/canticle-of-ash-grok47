@@ -43,10 +43,14 @@ Named artifacts are in the world: the package for Caius, the Dwemer puzzle box, 
 
 ## Additions (not source)
 
-Sixteen quests are tagged `addition` in the content object. They are not UESP canon:
+Forty-seven quests are tagged `addition` in the content object. They are not UESP canon.
+
+Sixteen were already in the game:
 
 - Original errands: The Canticle Fragment, The Silt-Strider’s Limp, Glass in the Foyada, A Name for the Dreamer, Sporelight, Salt Rice for the Manor, The Outlander’s Map, Guar with a Silver Bell, Ledger Ash, The Vigil at the Fence, Bitter Coast Debt, Listening at the Camp.
 - Restored from unused journal entries on https://en.uesp.net/wiki/Morrowind:Unfinished_Quests and labeled as restorations: Dagoth Velos, Baladas’s Taxes, Anumidium Plans, Writ for Neloth.
+
+Thirty-one more are self-contained errands (`side_01` through `side_31` in `src/game/content/additions/`). Each starts from one town, camp, fort, or tower that was already on the island, uses only its own people and items, and is not a guide quest.
 
 Tribunal and Bloodmoon are not in this game.
 
