@@ -1,4 +1,5 @@
-import type { GameState, LocationDef } from './types';
+import type { GameState, LocationDef, SpellDef } from './types';
+import { castSpell } from './magic';
 
 export type TravelMode = 'walk' | 'silt' | 'boat' | 'guide' | 'divine' | 'almsivi' | 'recall' | 'mark';
 
@@ -82,6 +83,40 @@ export function travelTo(
   state.py = 0;
   state.pz = 6;
   return { ok: true, reason: mode };
+}
+
+/**
+ * Mark, Recall, and the interventions move the player only after the same
+ * school-and-fatigue roll as any other spell, and only if the spell is known.
+ */
+export function castTravelSpell(
+  state: GameState,
+  spells: Map<string, SpellDef>,
+  locations: Map<string, LocationDef>,
+  spellId: string,
+  rng: () => number = Math.random,
+): { ok: boolean; success: boolean; reason: string } {
+  const cast = castSpell(state, spells, spellId, rng);
+  if (!cast.success) return { ok: cast.ok, success: false, reason: cast.reason };
+  const spell = spells.get(spellId) ?? state.customSpells.find((s) => s.id === spellId);
+  const effect = spell?.effect.id;
+  if (effect === 'mark') {
+    const moved = travelTo(state, locations, state.location, 'mark');
+    return { ok: moved.ok, success: true, reason: moved.reason };
+  }
+  if (effect === 'recall') {
+    if (!state.mark) return { ok: false, success: true, reason: 'nomark' };
+    const moved = travelTo(state, locations, state.mark, 'recall');
+    return { ok: moved.ok, success: true, reason: moved.reason };
+  }
+  if (effect === 'divine' || effect === 'almsivi') {
+    const here = locations.get(state.location);
+    const dest = effect === 'divine' ? here?.divine : here?.almsivi;
+    if (!dest) return { ok: false, success: true, reason: 'precondition' };
+    const moved = travelTo(state, locations, dest, effect);
+    return { ok: moved.ok, success: true, reason: moved.reason };
+  }
+  return { ok: true, success: true, reason: cast.reason };
 }
 
 export function canTravel(state: GameState): boolean {

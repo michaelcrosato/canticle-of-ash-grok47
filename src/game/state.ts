@@ -168,6 +168,22 @@ export function resolveStrike(
   return { hit: true, chance, damage, killed: false, revived: false, reason: 'hit' };
 }
 
+/** A spell that connects. The death is recorded the same way a weapon kill is. */
+export function spellStrike(state: GameState, target: { id: string; hp: number }, damage: number): { hp: number; killed: boolean; revived: boolean } {
+  if (target.id === 'dagoth_ur') {
+    const res = damageDagothUr(state, damage);
+    return { hp: res.hp, killed: res.destroyed, revived: res.revived };
+  }
+  const hp = Math.max(0, (state.actors[target.id] ?? target.hp) - Math.max(0, damage));
+  state.actors[target.id] = hp;
+  if (hp <= 0) {
+    killActor(state, target.id);
+    if (target.id === 'dagoth_gares' && !state.diseases.includes('corprus')) state.diseases.push('corprus');
+    return { hp: 0, killed: true, revived: false };
+  }
+  return { hp, killed: false, revived: false };
+}
+
 export function talkTo(state: GameState, npcId: string, quests: QuestDef[]): void {
   noteTalk(state, npcId);
   if (npcId === 'huleeya' && state.location === 'huleeya_hideout' && state.flags['talk:huleeya']) {

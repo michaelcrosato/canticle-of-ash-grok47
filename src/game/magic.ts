@@ -131,6 +131,8 @@ export function castSpell(
 ): { ok: boolean; success: boolean; chance: number; reason: string; damage?: number; healed?: number } {
   const spell = spells.get(spellId) ?? state.customSpells.find((s) => s.id === spellId);
   if (!spell) return { ok: false, success: false, chance: 0, reason: 'unknown' };
+  const known = state.spells.includes(spellId) || state.customSpells.some((s) => s.id === spellId);
+  if (!known) return { ok: false, success: false, chance: 0, reason: 'unlearned' };
   if (state.magicka < spell.cost) return { ok: false, success: false, chance: 0, reason: 'magicka' };
   const chance = playerSpellChance(state, spell);
   state.magicka -= spell.cost;

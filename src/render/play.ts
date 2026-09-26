@@ -25,11 +25,11 @@ import { actionFromGamepadButton, actionFromKey, TOUCH_ACTIONS } from '../game/i
 import { castSpell, drinkPotion, enchantItem, give, hasQty, makeSpell, mixPotion, useEnchantment } from '../game/magic';
 import { advanceQuest, branchClosed, chooseVivec, conditionMet, currentJournal, equipItem, isWraithguardEquipped, noteTalk, questRecord, strikeHeart } from '../game/quests';
 import { readLocalSave, writeLocalSave } from '../game/save';
-import { createNewGame, playerDefense, resolveStrike, rest, talkTo } from '../game/state';
-import { canFight, canTravel, travelTo } from '../game/travel';
+import { createNewGame, playerDefense, resolveStrike, rest, spellStrike, talkTo } from '../game/state';
+import { canFight, canTravel, castTravelSpell, travelTo } from '../game/travel';
 import type { CharacterChoices, GameAction, GameState, QuestDef, Specialty } from '../game/types';
 import { ATTRIBUTES } from '../game/types';
-import { ambientThreats, crowdSpots, doorSpots, spawnsAt, type Ambient, type SpawnView } from '../game/world';
+import { ambientThreats, crowdSpots, doorSpots, nearestHostile, pickup, spawnsAt, type Ambient, type SpawnView } from '../game/world';
 import { AshAudio } from './audio';
 import { clampPitch, moveVectorFromCamera } from './frame';
 
@@ -904,11 +904,13 @@ export class Canticle {
       return;
     }
     if (near.kind === 'item' && near.item) {
-      give(state, near.item, 1);
-      this.toast(`Taken: ${near.name}`, false);
+      const got = pickup(state, CONTENT.quests, near.item);
+      this.toast(got.done ? `Taken: ${near.name}` : `Taken: ${near.name} (${got.qty}/${got.need})`, false);
       this.audio.reward();
-      near.mesh.visible = false;
-      this.actors = this.actors.filter((a) => a !== near);
+      if (got.done) {
+        near.mesh.visible = false;
+        this.actors = this.actors.filter((a) => a !== near);
+      }
       return;
     }
     if (near.kind === 'service') {
@@ -1204,6 +1206,7 @@ export class Canticle {
     };
     panel.appendChild(ench);
     for (const spellId of ['mark_spell', 'recall_spell', 'divine_spell', 'almsivi_spell']) {
+      if (!state.spells.includes(spellId)) continue;
       const b = document.createElement('button');
       b.textContent = spellId.replace('_spell', '');
       b.onclick = () => {
@@ -1218,28 +1221,24 @@ export class Canticle {
     const state = this.state!;
     const spell = CONTENT.spells.get(this.selectedSpell) ?? state.customSpells.find((s) => s.id === this.selectedSpell);
     if (!spell) return;
-    if (spell.effect.id === 'mark') {
-      travelTo(state, CONTENT.locations, state.location, 'mark');
-      state.magicka = Math.max(0, state.magicka - spell.cost);
-      this.toast('Marked.', false);
+    if (!state.spells.includes(spell.id) && !state.customSpells.some((s) => s.id === spell.id)) {
+      this.toast('unlearned', false);
+      return;
+    }
+    if (spell.effect.id === 'mark' || spell.effect.id === 'recall' || spell.effect.id === 'divine' || spell.effect.id === 'almsivi') {
+      const moved = castTravelSpell(state, CONTENT.spells, CONTENT.locations, spell.id);
+      if (!moved.success) {
+        this.toast(moved.reason === 'fizzle' ? 'The spell fails' : moved.reason, false);
+        this.audio.miss();
+        return;
+      }
       this.audio.spell();
+      this.toast(moved.reason === 'marked' ? 'Marked.' : moved.reason, false);
+      if (moved.ok && spell.effect.id !== 'mark') this.enterLocation(true);
       return;
     }
-    if (spell.effect.id === 'recall' && state.mark) {
-      const res = travelTo(state, CONTENT.locations, state.mark, 'recall');
-      this.toast(res.reason, false);
-      if (res.ok) this.enterLocation(true);
-      return;
-    }
-    if (spell.effect.id === 'divine' || spell.effect.id === 'almsivi') {
-      const loc = CONTENT.locations.get(state.location)!;
-      const dest = spell.effect.id === 'divine' ? loc.divine : loc.almsivi;
-      const res = travelTo(state, CONTENT.locations, dest, spell.effect.id);
-      this.toast(res.ok ? dest : res.reason, false);
-      if (res.ok) this.enterLocation(true);
-      return;
-    }
-    const foe = this.actors.find((a) => a.hostile && a.hp > 0);
+    const foeId = nearestHostile(this.actors, state.px, state.pz, 2.5);
+    const foe = foeId ? this.actors.find((a) => a.id === foeId) : undefined;
     const res = castSpell(state, CONTENT.spells, spell.id);
     if (!res.success) {
       this.toast(res.reason === 'fizzle' ? 'The spell fails' : res.reason, false);
@@ -1248,11 +1247,9 @@ export class Canticle {
     }
     this.audio.spell();
     if (res.damage && foe) {
-      foe.hp = Math.max(0, foe.hp - res.damage);
-      if (foe.id === 'dagoth_ur') {
-        resolveStrike(state, CONTENT.items, { id: 'dagoth_ur', hp: foe.hp, skill: 80, armor: 20 });
-      }
-      this.toast(`${res.damage}`, true);
+      const hit = spellStrike(state, { id: foe.id, hp: foe.hp }, res.damage);
+      foe.hp = hit.hp;
+      this.toast(hit.revived ? 'The Heart restores him' : hit.killed ? 'Fallen' : `${res.damage}`, true);
       if (foe.hp <= 0) {
         foe.mesh.visible = false;
         foe.hostile = false;

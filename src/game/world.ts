@@ -1,6 +1,6 @@
 import type { Cond, GameState, QuestDef } from './types';
 import { conditionMet } from './quests';
-import { hasQty } from './magic';
+import { give, hasQty } from './magic';
 
 export interface SpawnView {
   location: string;
@@ -64,6 +64,54 @@ export function doorSpots(count: number): { x: number; z: number }[] {
   return out;
 }
 
+function qtyAsked(cond: Cond | undefined, itemId: string): number {
+  if (!cond) return 0;
+  if (cond.op === 'item' && cond.id === itemId) return cond.qty ?? 1;
+  if (cond.op === 'all' || cond.op === 'any') {
+    return cond.of.reduce((n, c) => Math.max(n, qtyAsked(c, itemId)), 0);
+  }
+  return 0;
+}
+
+/** How many of this item the open stage still expects. A unique find asks for one. */
+export function gatherNeed(state: GameState, quests: QuestDef[], itemId: string): number {
+  let need = 1;
+  for (const quest of quests) {
+    const rec = state.quests[quest.id];
+    if (!rec || rec.complete) continue;
+    const asked = qtyAsked(quest.stages[rec.stage]?.complete, itemId);
+    if (asked > need) need = asked;
+  }
+  return need;
+}
+
+/** One handful from a node. The pile remains until that quantity is in the pack. */
+export function pickup(state: GameState, quests: QuestDef[], itemId: string): { qty: number; need: number; done: boolean } {
+  give(state, itemId, 1);
+  const qty = state.inventory.find((row) => row.id === itemId)?.qty ?? 0;
+  const need = gatherNeed(state, quests, itemId);
+  return { qty, need, done: qty >= need };
+}
+
+export function nearestHostile(
+  actors: { id: string; x: number; z: number; hostile: boolean; hp: number }[],
+  x: number,
+  z: number,
+  max = 2.5,
+): string | null {
+  let best: string | null = null;
+  let bestD = max;
+  for (const actor of actors) {
+    if (!actor.hostile || actor.hp <= 0) continue;
+    const d = Math.hypot(actor.x - x, actor.z - z);
+    if (d < bestD) {
+      bestD = d;
+      best = actor.id;
+    }
+  }
+  return best;
+}
+
 function gatesOpen(state: GameState, cond: Cond): boolean {
   if (cond.op === 'all') return cond.of.filter(isGate).every((c) => conditionMet(state, c));
   if (cond.op === 'any') return cond.of.some((c) => gatesOpen(state, c));
@@ -94,7 +142,7 @@ export function spawnsAt(state: GameState, quests: QuestDef[], location: string)
       const key = spawn.npc ?? spawn.item ?? spawn.name;
       if (seen.has(key)) continue;
       if (spawn.npc && state.dead[spawn.npc]) continue;
-      if (spawn.item && hasQty(state, spawn.item, 1)) continue;
+      if (spawn.item && hasQty(state, spawn.item, gatherNeed(state, quests, spawn.item))) continue;
       if (spawn.hostile && !started && spawn.npc !== quest.giver) {
         // Hostile objectives appear once the quest is accepted, or immediately if the only stage is the objective.
         if (quest.stages.length > 1) continue;

@@ -5,9 +5,10 @@ import { fatigueMaxOf, hitChance, levelUp, moveSpeed, spellChance, useSkill } fr
 import { castSpell, drinkPotion, enchantItem, mixPotion, useEnchantment } from '../src/game/magic';
 import { admire } from '../src/game/formulas';
 import { deserialize, serialize } from '../src/game/save';
-import { createNewGame } from '../src/game/state';
+import { createNewGame, spellStrike } from '../src/game/state';
 import { advanceQuest } from '../src/game/quests';
-import { canFight, canTravel, travelTo } from '../src/game/travel';
+import { canFight, canTravel, castTravelSpell, travelTo } from '../src/game/travel';
+import { nearestHostile, pickup, spawnsAt } from '../src/game/world';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { moveVectorFromCamera } from '../src/render/frame';
 
@@ -154,6 +155,72 @@ describe('character and combat rules', () => {
     expect(moved.ok).toBe(true);
     expect(state.location).toBe('balmora');
     expect(state.inventory.some((i) => i.id === 'package_for_caius')).toBe(true);
+  });
+});
+
+describe('gather, spell kills, and learned travel magic', () => {
+  it('sload soap stays in the world until five handfuls are picked up', () => {
+    const state = base();
+    state.released = true;
+    state.factions.telvanni = 0;
+    state.quests.tel_003 = { stage: 9, complete: true };
+    state.location = 'sadrith_mora';
+    state.flags['talk:arara_uvulas'] = true;
+    expect(advanceQuest(state, CONTENT.quests, 'tel_004').ok).toBe(true);
+    expect(spawnsAt(state, CONTENT.quests, 'sadrith_mora').some((s) => s.item === 'sload_soap')).toBe(true);
+    for (let i = 1; i <= 4; i++) {
+      const got = pickup(state, CONTENT.quests, 'sload_soap');
+      expect(got.qty).toBe(i);
+      expect(got.done).toBe(false);
+      expect(spawnsAt(state, CONTENT.quests, 'sadrith_mora').some((s) => s.item === 'sload_soap')).toBe(true);
+      expect(advanceQuest(state, CONTENT.quests, 'tel_004').ok).toBe(false);
+    }
+    const last = pickup(state, CONTENT.quests, 'sload_soap');
+    expect(last.qty).toBe(5);
+    expect(last.done).toBe(true);
+    expect(spawnsAt(state, CONTENT.quests, 'sadrith_mora').some((s) => s.item === 'sload_soap')).toBe(false);
+    expect(advanceQuest(state, CONTENT.quests, 'tel_004').ok).toBe(true);
+  });
+
+  it('a damaging spell records the death of the nearer foe', () => {
+    const state = base();
+    state.released = true;
+    const target = nearestHostile(
+      [
+        { id: 'far_mark', x: 8, z: 0, hostile: true, hp: 40 },
+        { id: 'near_mark', x: 1, z: 0, hostile: true, hp: 12 },
+      ],
+      0,
+      0,
+      6,
+    );
+    expect(target).toBe('near_mark');
+    const hit = spellStrike(state, { id: target!, hp: 12 }, 20);
+    expect(hit.killed).toBe(true);
+    expect(state.dead.near_mark).toBe(true);
+    expect(state.actors.near_mark).toBe(0);
+    expect(state.dead.far_mark).toBeFalsy();
+  });
+
+  it('divine intervention does not move an unlearned, drained, or fizzled cast', () => {
+    const state = base();
+    state.released = true;
+    state.location = 'balmora';
+    state.spells = state.spells.filter((id) => id !== 'divine_spell');
+    expect(castTravelSpell(state, CONTENT.spells, CONTENT.locations, 'divine_spell').reason).toBe('unlearned');
+    expect(state.location).toBe('balmora');
+    state.spells.push('divine_spell');
+    state.magicka = 0;
+    expect(castTravelSpell(state, CONTENT.spells, CONTENT.locations, 'divine_spell').reason).toBe('magicka');
+    expect(state.location).toBe('balmora');
+    state.magicka = state.magickaMax;
+    const fizzle = castTravelSpell(state, CONTENT.spells, CONTENT.locations, 'divine_spell', () => 1);
+    expect(fizzle.success).toBe(false);
+    expect(state.location).toBe('balmora');
+    expect(state.magicka).toBeLessThan(state.magickaMax);
+    const cast = castTravelSpell(state, CONTENT.spells, CONTENT.locations, 'divine_spell', () => 0);
+    expect(cast.success).toBe(true);
+    expect(state.location).not.toBe('balmora');
   });
 });
 
